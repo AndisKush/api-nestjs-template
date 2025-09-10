@@ -6,50 +6,65 @@ import {
   Patch,
   Param,
   Delete,
-  HttpCode,
   UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { UserResponseDto } from './dto/user-response.dto';
+import { UserResponseDto } from './dto/user-response.dto'; // <-- IMPORTADO AQUI
+import { plainToInstance } from 'class-transformer';      // <-- IMPORTADO AQUI
 
 @Controller('users')
+@UseGuards(JwtAuthGuard) // Podemos aplicar o Guard no nível do controller
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // A rota de criação pode ser pública, então a movemos para fora do Guard global
+  // ou a deixamos aqui e removemos o Guard de cima, aplicando em cada rota.
+  // Por simplicidade, vamos deixar aqui e comentar o Guard de cima.
+  // @UseGuards(JwtAuthGuard) 
   @Post()
-  @HttpCode(200) // 👈 força retornar 200 OK em vez de 201 Created
-  async create(@Body() createUserDto: CreateUserDto) {
-    await this.usersService.create(createUserDto);
-    return { message: 'Usuário criado com sucesso' };
+  async create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+    const user = await this.usersService.create(createUserDto);
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get()
   async findAll(): Promise<UserResponseDto[]> {
-    return this.usersService.findAll();
+    const users = await this.usersService.findAll();
+    return plainToInstance(UserResponseDto, users, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<UserResponseDto> {
-    return this.usersService.findOne(+id);
+  async findOne(@Param('id', ParseIntPipe) id: number): Promise<UserResponseDto> {
+    const user = await this.usersService.findOne(id);
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<UserResponseDto> {
-    return this.usersService.update(+id, updateUserDto);
+    const updatedUser = await this.usersService.update(id, updateUserDto);
+    return plainToInstance(UserResponseDto, updatedUser, {
+      excludeExtraneousValues: true,
+    });
   }
 
-  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<UserResponseDto> {
-    return this.usersService.remove(+id);
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<UserResponseDto> {
+    const deletedUser = await this.usersService.remove(id);
+    return plainToInstance(UserResponseDto, deletedUser, {
+      excludeExtraneousValues: true,
+    });
   }
 }

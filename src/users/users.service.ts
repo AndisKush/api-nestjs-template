@@ -1,78 +1,92 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { plainToInstance } from 'class-transformer';
-import { UserResponseDto } from './dto/user-response.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
+import { User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto): Promise<void> {
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    if (createUserDto.password !== createUserDto.confirmPassword) {
+      throw new BadRequestException('As senhas não conferem.');
+    }
+
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    await this.prisma.user.create({
+    return this.prisma.user.create({
       data: {
-        ...createUserDto,
+        name: createUserDto.name,
+        email: createUserDto.email,
         password: hashedPassword,
       },
     });
   }
 
-  async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.prisma.user.findMany();
-
-    if (!Array.isArray(users)) {
-      throw new Error('findMany did not return an array');
-    }
-
-    return plainToInstance(UserResponseDto, users, {
-      excludeExtraneousValues: true,
-      enableImplicitConversion: true,
-    });
+  async findAll(): Promise<User[]> {
+    // Simplificado: Apenas retorna os dados. O interceptor fará a transformação.
+    return this.prisma.user.findMany();
   }
 
-  async findOne(id: number): Promise<UserResponseDto> {
+  async findOne(id: number): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
-
-    return plainToInstance(UserResponseDto, user, {
-      excludeExtraneousValues: true,
-      enableImplicitConversion: true,
-    });
+    if (!user) {
+      throw new NotFoundException(`Usuário com ID ${id} não encontrado`);
+    }
+    // Simplificado: Apenas retorna o usuário. O interceptor remove a senha.
+    return user;
   }
 
   findByEmail(email: string) {
-    // usado para autenticação, pode retornar o objeto completo (inclui password)
+    // Usado para autenticação, retorna o objeto completo (inclui password)
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async update(
-    id: number,
-    updateUserDto: UpdateUserDto,
-  ): Promise<UserResponseDto> {
-    if (updateUserDto.password) {
-      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+  async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+    const userToUpdate = await this.prisma.user.findUnique({ where: { id } });
+    if (!userToUpdate) {
+      throw new NotFoundException(`Usuário com ID ${id} não encontrado.`);
     }
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: updateUserDto,
-    });
+    if (updateUserDto.email) {
+      const existingUserWithEmail = await this.prisma.user.findUnique({
+        where: { email: updateUserDto.email },
+      });
+      if (existingUserWithEmail && existingUserWithEmail.id !== id) {
+        throw new ConflictException('O e-mail já está em uso por outro usuário.');
+      }
+    }
+    
+    // Cria uma cópia limpa dos dados para evitar mutação do DTO original
+    const dataToUpdate = { ...updateUserDto };
 
-    return plainToInstance(UserResponseDto, updatedUser, {
-      excludeExtraneousValues: true,
-      enableImplicitConversion: true,
+    // Lógica para tratar a alteração de senha
+    if (dataToUpdate.password) {
+      if (dataToUpdate.password !== dataToUpdate.confirmPassword) {
+        throw new BadRequestException('As senhas para alteração não conferem.');
+      }
+      // Criptografa a nova senha
+      dataToUpdate.password = await bcrypt.hash(dataToUpdate.password, 10);
+    }
+    
+    // Remove o campo confirmPassword do objeto que será enviado ao Prisma
+    delete dataToUpdate.confirmPassword;
+    
+    return this.prisma.user.update({
+      where: { id },
+      data: dataToUpdate,
     });
   }
 
-  async remove(id: number): Promise<UserResponseDto> {
-    const deletedUser = await this.prisma.user.delete({ where: { id } });
-    return plainToInstance(UserResponseDto, deletedUser, {
-      excludeExtraneousValues: true,
-      enableImplicitConversion: true,
-    });
+  async remove(id: number): Promise<User> {
+    // Simplificado: Apenas deleta e retorna o usuário deletado.
+    return this.prisma.user.delete({ where: { id } });
   }
 }

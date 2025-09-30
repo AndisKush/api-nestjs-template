@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsIn} from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -18,4 +18,8 @@ export class CreateUserDto {
   @IsNotEmpty()
   @MinLength(6, { message: 'A confirmação de senha deve ter no mínimo 6 caracteres' })
   confirmPassword: string;
+
+  @IsOptional()
+  @IsIn(['ativo', 'inativo'], { message: 'O status deve ser ativo ou inativo' })
+  status?: string;
 }
